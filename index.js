@@ -17,8 +17,8 @@ let onBreak = false;
 let timer;
 let currentGuild = '';
 let timerConfig = {
-    study: 0,
-    break: 0,
+    study: 25,
+    break: 5,
     breakMusic: '',
 };
 
@@ -159,11 +159,11 @@ const runTimer = async (key, message, buttons) => {
     let mins, seconds;
     if(key === 'study'){
         mins = timerConfig.study;
-        seconds = 5;
+        seconds = 0;
     }
     else if(key === 'break'){
         mins = timerConfig.break;
-        seconds = 5;
+        seconds = 0;
     }
 
     let timerMessage = await message.channel.send(`Time Remaining: ${formatTime(mins)}:${formatTime(seconds)}`);
