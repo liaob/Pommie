@@ -1,14 +1,25 @@
 const Discord = require("discord.js");
 const config = require("./config.json");
+const ytdl = require('ytdl-core');
+const {
+	AudioPlayerStatus,
+	StreamType,
+	createAudioPlayer,
+	createAudioResource,
+	joinVoiceChannel,
+    getVoiceConnection,
+} = require('@discordjs/voice');
 
-const client = new Discord.Client({intents: ["GUILDS", "GUILD_MESSAGES"]});
+const client = new Discord.Client({intents: ["GUILDS", "GUILD_MESSAGES", "GUILD_VOICE_STATES"]});
 
 let inProgress = false;
 let onBreak = false;
 let timer;
+let currentGuild = '';
 let timerConfig = {
-    study: 25,
-    break: 5,
+    study: 0,
+    break: 0,
+    breakMusic: '',
 };
 
 const breakButtons = new Discord.MessageActionRow().addComponents(
@@ -37,14 +48,15 @@ client.on("messageCreate", async function(message) {
         '!start: Starts the pomodoro session\n'+
         '!stop: Stops the ponodoro session\n'+
         '!setstudytime {time in minutes}: Set the study time\n'+
-        '!setbreaktime {time in minutes}: Set the break time');
+        '!setbreaktime {time in minutes}: Set the break time\n'+
+        '!setbreakmusic {youtube link}: Set the break music');
     }
 
     if (command === "setstudytime") {
         let time = parseInt(args[0]);
         if (time !== NaN) {
             timerConfig.study = time;
-            message.reply('study time changed');
+            message.reply('Study time changed');
         }
         else {
             message.reply('Error setting study time')
@@ -55,11 +67,16 @@ client.on("messageCreate", async function(message) {
         let time = parseInt(args[0]);
         if (time !== NaN) {
             timerConfig.break = time;
-            message.reply('break time changed');
+            message.reply('Break time changed');
         }
         else {
             message.reply('Error setting break time')
         }
+    }
+
+    if (command === "setbreakmusic") {
+        message.reply('Music set')
+        timerConfig.breakMusic = args[0];
     }
 
     if (command === "start") {
@@ -92,6 +109,7 @@ const startSession = async (message, key) => {
     else if(key === 'study'){
         inProgress = true;
         onBreak = false;
+        getVoiceConnection(currentGuild)?.disconnect();
         message.reply(`Current time: <t:${Math.floor(Date.now()/1000)}>\nStarting timer for study session for ${timerConfig.study} minutes.`);
 
         runTimer('study', message, breakButtons);
@@ -102,7 +120,32 @@ const startSession = async (message, key) => {
 
         message.reply(`Starting timer for break session for ${timerConfig.break} minutes.`);
 
-        runTimer('break', message, studyButtons);
+        if(timerConfig.breakMusic === ''){
+            runTimer('break', message, studyButtons);
+        }
+        else {
+            const voice = message.member.voice.channel;
+            if(voice){
+                currentChannel = voice.guildId;
+                const connection = joinVoiceChannel({
+                    channelId: voice.id,
+                    guildId: voice.guildId,
+                    adapterCreator: voice.guild.voiceAdapterCreator,
+                });
+                const stream = ytdl(timerConfig.breakMusic, {filter:'audioonly'});
+                const resource = createAudioResource(stream, { inputType: StreamType.Arbitrary });
+                const player = createAudioPlayer();
+                
+                player.play(resource);
+                connection.subscribe(player);
+                
+                player.on(AudioPlayerStatus.Idle, () => connection.destroy());
+                runTimer('break', message, studyButtons);
+            }
+            else {
+                message.channel.send('Join a voice channel first if you want music to play!');
+            }
+        }
     }
 };
 
@@ -116,11 +159,11 @@ const runTimer = async (key, message, buttons) => {
     let mins, seconds;
     if(key === 'study'){
         mins = timerConfig.study;
-        seconds = 0;
+        seconds = 5;
     }
     else if(key === 'break'){
         mins = timerConfig.break;
-        seconds = 0;
+        seconds = 5;
     }
 
     let timerMessage = await message.channel.send(`Time Remaining: ${formatTime(mins)}:${formatTime(seconds)}`);
